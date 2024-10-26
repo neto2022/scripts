@@ -747,7 +747,7 @@ class LMDomain:
             bytes(self.boot_key),
             self.fd.key.data[:self.fd.key.datalength],
             bytes(self.fd.key.iv.data)
-        )[:0x10]
+        )[:16]
 
         print(f'{colored('Hashed boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key_hashed.hex()}\n')
 
