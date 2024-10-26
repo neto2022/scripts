@@ -500,8 +500,8 @@ class LMUser:
 class LMDomain:
     def __init__(self, file, jd=None, skew1=None, gbg=None, data=None, pw=None):
         self.users = []
-        self.boot_key = [0 for _ in range(16)]
-        self.boot_key_hashed = None
+        self.boot_key_aes = [0 for _ in range(16)]
+        self.boot_key = None
         self.fd = None
 
         self.load_data(file)
@@ -739,17 +739,17 @@ class LMDomain:
         for index, scrambled in enumerate(
             [8, 5, 4, 2, 11, 9, 13, 3, 0, 6, 1, 12, 14, 10, 15, 7]
         ):
-            self.boot_key[index] = boot_key[scrambled]
+            self.boot_key_aes[index] = boot_key[scrambled]
 
-        print(f'{colored('Target system boot key:\n', attrs=['bold'])}🔑 0x{bytes(self.boot_key).hex()}\n')
+        print(f'{colored('Target system boot key:\n', attrs=['bold'])}🔑 0x{bytes(self.boot_key_aes).hex()}\n')
 
-        self.boot_key_hashed = self.decrypt_aes(
-            bytes(self.boot_key),
+        self.boot_key = self.decrypt_aes(
+            bytes(self.boot_key_aes),
             self.fd.key.data[:self.fd.key.datalength],
             bytes(self.fd.key.iv.data)
         )[:16]
 
-        print(f'{colored('Hashed boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key_hashed.hex()}\n')
+        print(f'{colored('Hashed boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key.hex()}\n')
 
     def decrypt_hash(self):
         for user in self.users:
@@ -758,7 +758,7 @@ class LMDomain:
 
             dec = [
                 self.decrypt_aes(
-                    self.boot_key_hashed,
+                    self.boot_key,
                     hash.data.hashdata,
                     bytes(hash.data.iv.data)
                 )[:16] for hash in h
@@ -779,7 +779,7 @@ class LMDomain:
 
             enc = [
                 self.encrypt_aes(
-                    self.boot_key_hashed,
+                    self.boot_key,
                     hash.data.hashdata,
                     bytes(hash.data.iv.data)
                 ) for hash in h
