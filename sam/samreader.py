@@ -1,33 +1,16 @@
-from binascii import unhexlify
-from datetime import datetime, UTC
-from termcolor import colored
-from Cryptodome.Cipher import DES, AES
-
 import argparse
+import hashcat
 import json
 
-def ft2dt(filetime):
-    heptonion = int(1 / 10**-7) # Windows counts time in heptonions
+from struct import Struct
+from binascii import unhexlify
 
-    # Calculate difference between epochs
-    windows_epoch = datetime.strptime('1601-01-01 00:00:00', '%Y-%m-%d %H:%M:%S')
-    posix_epoch = datetime.strptime('1970-01-01 00:00:00', '%Y-%m-%d %H:%M:%S')
+from termcolor import colored
 
-    epoch_diff = (posix_epoch - windows_epoch).total_seconds()
+from Cryptodome.Cipher import DES, AES
+from Cryptodome.Hash import MD4
 
-    # Calculate the difference between the two epochs in heptonions
-    difference = epoch_diff * heptonion
-    microseconds = (filetime - difference) // heptonion
-
-    timestamp = None
-
-    try:
-        timestamp = datetime.fromtimestamp(microseconds, UTC)
-    except OSError:
-        print('❌ Error converting timestamp!')
-
-    return timestamp
-
+from sam.utils import ft2dt
 
 # Entry Structure (ES)
 class ES:
@@ -297,7 +280,8 @@ class V:
             ('V4', 'b'),
             ('V5', 'b'),
         ]
-        self.__v = data
+
+        self.__length = len(data)
 
         for name, _ in self.__entries:
             setattr(self, name.lower(), None)
@@ -306,7 +290,7 @@ class V:
 
     def parse(self, data):
         for i, entry in enumerate(self.__entries):
-            setattr(self, entry[0].lower(), VEntry(self.__v, self.__base, i * 0x0C, *entry))
+            setattr(self, entry[0].lower(), VEntry(data, self.__base, i * 0x0C, *entry))
 
     def __repr__(self):
         return (
@@ -323,7 +307,7 @@ class V:
         )
 
     def __len__(self):
-        return len(self.__v)
+        return self.__length
 
 
 # V Entry
@@ -436,6 +420,7 @@ class LMUser:
         self.reset_force = not not int.from_bytes(bytes(data['ForcePasswordReset']), 'little') if 'ForcePasswordReset' in data else False
         self.hint = bytes(data['UserPasswordHint']).decode('utf-16-le') if 'UserPasswordHint' in data else None
         self.decrypted_hashes = None
+        self.encrypted_hashes = None
 
         self.compute_keys()
 
@@ -452,7 +437,7 @@ class LMUser:
 
         for i, key in enumerate(self.k):
             key = [
-                key[0] >> 0x01,
+                key[0] >> 1,
                 (key[0] & 0x01) << 6 | key[1] >> 2,
                 (key[1] & 0x03) << 5 | key[2] >> 3,
                 (key[2] & 0x07) << 4 | key[3] >> 4,
@@ -495,26 +480,37 @@ class LMUser:
                 ]
             ) +
             (
-                colored('\n\n‼️🔓 Decrypted hashes:\n', attrs=['bold']) +
-                f'NT: {self.decrypted_hashes[0].hex() if len(self.decrypted_hashes[0]) else '🚫 None (LM disabled/empty password)'}\n' +
-                f'LM: {self.decrypted_hashes[1].hex() if len(self.decrypted_hashes[1]) else '🚫 None (LM disabled/empty password)'}\n'
-            ) if self.decrypted_hashes else ''
+                (
+                    colored('\n\n‼️🔓 Decrypted hashes:\n', attrs=['bold']) +
+                    f'NT: {self.decrypted_hashes[0].hex() if len(self.decrypted_hashes[0]) else '🚫 None'}\n' +
+                    f'LM: {self.decrypted_hashes[1].hex() if len(self.decrypted_hashes[1]) else '🚫 None (LM disabled/empty password)'}\n'
+                ) if self.decrypted_hashes else ''
+            ) +
+            (
+                (
+                        colored('\n✔️ Encrypted hashes:\n', attrs=['bold']) +
+                        f'NT: {self.encrypted_hashes[0].hex() if len(self.encrypted_hashes[0]) else '🚫 None'}\n' +
+                        f'LM: {self.encrypted_hashes[1].hex() if len(self.encrypted_hashes[1]) else '🚫 None (LM disabled/empty password)'}\n'
+                ) if self.encrypted_hashes else ''
+            ) +
             '\n'
         )
 
 
 class LMDomain:
-    def __init__(self, file, jd=None, skew1=None, gbg=None, data=None):
+    def __init__(self, file, jd=None, skew1=None, gbg=None, data=None, pw=None):
         self.users = []
         self.boot_key = [0 for _ in range(16)]
         self.boot_key_hashed = None
         self.fd = None
 
-        # TODO: Don't forget to hand the boot key to each user
         self.load_data(file)
 
         self.acquire_boot_key(jd, skew1, gbg, data)
         self.decrypt_hash()
+
+        if pw is not None:
+            self.encrypt_hash(pw)
 
     def load_data(self, file):
         with open(file, 'r', encoding='utf-16') as f:
@@ -633,6 +629,57 @@ class LMDomain:
 
         return True
 
+    def hash_nt(self, password):
+        """ Compute the NTLM hash of a password. """
+
+        # Nice and simple, just hash the UTF-16-LE encoded password with MD4.
+        # MD4(UTF-16-LE(password))
+        encoded_password = password.encode('utf-16-le')
+        md4 = MD4.new(encoded_password).digest()
+
+        return md4
+
+    def hash_lm(self, password):
+        """ Compute the Lan Manager (LM) hash of a password. """
+
+        # https://learn.microsoft.com/en-us/windows-server/security/kerberos/passwords-technical-overview#passwords-stored-as-owf
+        # 1. The password is padded with NULL bytes to exactly 14 characters. If the password is longer than 14 characters, it is replaced with 14 NULL bytes for the remaining operations.
+        # 2. The password is converted to all uppercase.
+        # 3. The password is split into two 7-byte (56-bit) keys.
+        # 4. Each key is used to encrypt a fixed string.
+        # 5. The two results from step 4 are concatenated and stored as the LM hash.
+        fixed_string = b'KGS!@#$%'
+        hash_length = 14
+
+        if len(password) > hash_length:
+            password = password[:hash_length]
+
+        password = password.upper().ljust(hash_length, '\x00').encode('utf-8')
+
+        # DES parity bit calculation twiddle (64-bit value)
+        # http://graphics.stanford.edu/~seander/bithacks.html#ParityParallel
+        def parity(v):
+            return (v << 1) | (0x9669 >> ((v ^ (v >> 4)) & 0x0F)) & 0x01 if not v & ~0x7F else 0
+
+        k = [password[:hash_length // 2], password[hash_length // 2:]]
+
+        # The part Microsoft doesn't disclose: DES encryption is used, we have to expand the keys
+        # to 8 bytes and calculate a parity bit for each byte
+        k = [
+            b''.join(
+                (
+                    parity(int.from_bytes(key, 'big') >> (0x07 * (shift - 1)) & 0x7F)
+                ).to_bytes() for shift in range(8, 0, -1)
+            ) for key in k
+        ]
+
+        # The «fixed string» is KGS!@#$%, and it's encrypted with DES using the keys
+        h = [
+            DES.new(key, mode=DES.MODE_ECB).encrypt(fixed_string) for key in k
+        ]
+
+        return b''.join(h)
+
     def acquire_boot_key(self, jd, skew1, gbg, data):
         keys = [
             ('JD', jd),
@@ -704,28 +751,44 @@ class LMDomain:
 
         print(f'{colored('Hashed boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key_hashed.hex()}\n')
 
-
     def decrypt_hash(self):
         for user in self.users:
             d = [DES.new(key, mode=DES.MODE_ECB) for key in user.k]
+            h = [user.v.nthash, user.v.lmhash]
 
-            ntlm = self.decrypt_aes(
-                self.boot_key_hashed,
-                user.v.nthash.data.hashdata,
-                bytes(user.v.nthash.data.iv.data)
-            )[:16]
-
-            lm = self.decrypt_aes(
-                self.boot_key_hashed,
-                user.v.lmhash.data.hashdata,
-                bytes(user.v.lmhash.data.iv.data)
-            )[:16]
+            dec = [
+                self.decrypt_aes(
+                    self.boot_key_hashed,
+                    hash.data.hashdata,
+                    bytes(hash.data.iv.data)
+                )[:16] for hash in h
+            ]
 
             # NTHash is split into 2 8-byte chunks and passed through DES ← (K1, K2)
-            user.decrypted_hashes = (
-                    d[0].decrypt(ntlm[:8]) + d[1].decrypt(ntlm[8:]),
-                    d[0].decrypt(lm[:8]) + d[1].decrypt(lm[8:])
-            )
+            user.decrypted_hashes = [
+                d[0].decrypt(decr[:8]) + d[1].decrypt(decr[8:]) for decr in dec
+            ]
+
+    def encrypt_hash(self, pw):
+        for user in self.users:
+            user.v.nthash.data.hashdata = self.hash_nt(pw)
+            user.v.lmhash.data.hashdata = self.hash_lm(pw)
+
+            d = [DES.new(key, mode=DES.MODE_ECB) for key in user.k]
+            h = [user.v.nthash, user.v.lmhash]
+
+            enc = [
+                self.encrypt_aes(
+                    self.boot_key_hashed,
+                    hash.data.hashdata,
+                    bytes(hash.data.iv.data)
+                ) for hash in h
+            ]
+
+            # NTHash is split into 2 8-byte chunks and passed through DES ← (K1, K2)
+            user.encrypted_hashes = [
+                d[0].encrypt(encr[:8]) + d[1].encrypt(encr[8:]) for encr in enc
+            ]
 
     def decrypt_aes(self, key, value, iv=None):
         result = b''
@@ -748,6 +811,27 @@ class LMDomain:
 
         return result
 
+    def encrypt_aes(self, key, value, iv=None):
+        result = b''
+
+        # If no IV is provided, use an empty vector
+        # IV = (0, 0, ..., 0)
+        if iv is None:
+            iv = b'\x00' * 16
+
+        aes256 = AES.new(key, AES.MODE_CBC, iv)
+
+        for index in range(0, len(value), 16):
+            cipher = value[index:index + 16]
+
+            # Pad buffer to 16 bytes if it's less than a full block
+            if len(cipher) < 16:
+                cipher += b'\x00' * (16 - len(cipher))
+
+            result += aes256.encrypt(cipher)
+
+        return result
+
     def __repr__(self):
         return (
                 colored(f'LMDomain:\n', attrs=['bold'])
@@ -764,9 +848,11 @@ if __name__ == '__main__':
     parser.add_argument('--skew1', help='LSA\\Skew1 class name')
     parser.add_argument('--gbg', help='LSA\\GBG class name')
     parser.add_argument('--data', help='LSA\\Data key class name')
+    parser.add_argument('--pw', help='Custom password to hash & encrypt')
 
     args = parser.parse_args()
 
-    domain = LMDomain(args.reg, args.jd, args.skew1, args.gbg, args.data)
+    domain = LMDomain(args.reg, args.jd, args.skew1, args.gbg, args.data, args.pw)
 
     print(domain)
+
