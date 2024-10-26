@@ -500,7 +500,7 @@ class LMUser:
 class LMDomain:
     def __init__(self, file, jd=None, skew1=None, gbg=None, data=None, pw=None):
         self.users = []
-        self.boot_key_aes = [0 for _ in range(16)]
+        self.lsa_key = [0 for _ in range(16)]
         self.boot_key = None
         self.fd = None
 
@@ -721,7 +721,7 @@ class LMDomain:
             print('\t  Data:')
             print('\t00000000 25 9d f2 f8 59 27\n')
 
-        boot_key = b''
+        lsa_key = b''
 
         for key, value in keys:
             while value is None or not self.is_valid_arg(value):
@@ -732,24 +732,24 @@ class LMDomain:
 
                 value = input(f'Enter {key} ' + colored('class name', color='red', attrs=['bold']) + ': ')
 
-            boot_key += value.encode('utf-8')
+            lsa_key += value.encode('utf-8')
 
-        boot_key = unhexlify(boot_key)
+        lsa_key = unhexlify(lsa_key)
 
         for index, scrambled in enumerate(
             [8, 5, 4, 2, 11, 9, 13, 3, 0, 6, 1, 12, 14, 10, 15, 7]
         ):
-            self.boot_key_aes[index] = boot_key[scrambled]
+            self.lsa_key[index] = lsa_key[scrambled]
 
-        print(f'{colored('Target system boot key:\n', attrs=['bold'])}🔑 0x{bytes(self.boot_key_aes).hex()}\n')
+        print(f'{colored('LSA key:\n', attrs=['bold'])}🔑 0x{bytes(self.lsa_key).hex()}\n')
 
         self.boot_key = self.decrypt_aes(
-            bytes(self.boot_key_aes),
+            bytes(self.lsa_key),
             self.fd.key.data[:self.fd.key.datalength],
             bytes(self.fd.key.iv.data)
         )[:16]
 
-        print(f'{colored('Hashed boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key.hex()}\n')
+        print(f'{colored('Boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key.hex()}\n')
 
     def decrypt_hash(self):
         for user in self.users:
