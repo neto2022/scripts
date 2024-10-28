@@ -78,8 +78,8 @@ class SAMHash:
         ) + '\n'.join(
             [
                 '\t' +
-                f'{'✔️ ' if getattr(self, entry[ES.NAME].lower()) is not None else '❌ '}' +
-                f'{entry[ES.NAME] + ':' : <30}' +
+                f'{"✔️ " if getattr(self, entry[ES.NAME].lower()) is not None else "❌ "}' +
+                f'{entry[ES.NAME] + ":" : <30}' +
                 colored(str(getattr(self, entry[ES.NAME].lower())), attrs=['bold'])
                 for entry in self.__entries
             ]
@@ -128,7 +128,6 @@ class AESData:
 
             setattr(self, entry[ES.NAME].lower(), value)
 
-
     def __repr__(self):
         values = colored(
             f'🔒 AESData [{len(self)} bytes] ↓ ↓\n', attrs=['bold']
@@ -136,11 +135,11 @@ class AESData:
 
         for entry in self.__entries:
             values += (
-                '\t' +
-                f'{'✔️ ' if getattr(self, entry[ES.NAME].lower()) is not None else '❌ '}' +
-                f'{entry[ES.NAME] + ':' : <30}' +
-                colored(str(getattr(self, entry[ES.NAME].lower())), attrs=['bold']) +
-               '\n'
+                    '\t' +
+                    f'{"✔️ " if getattr(self, entry[ES.NAME].lower()) is not None else "❌ "}' +
+                    f'{entry[ES.NAME] + ":" : <30}' +
+                    colored(str(getattr(self, entry[ES.NAME].lower())), attrs=['bold']) +
+                    '\n'
             )
 
         return values
@@ -231,10 +230,10 @@ class Fd:
 
         for entry in self.__entries:
             values += (
-                f'{'✔️ ' if getattr(self, entry[ES.NAME].lower()) is not None else '❌ '}' +
-                f'{entry[ES.NAME] + ':' : <30}' +
-                colored(str(getattr(self, entry[ES.NAME].lower())), attrs=['bold']) +
-               '\n'
+                    f'{"✔️ " if getattr(self, entry[ES.NAME].lower()) is not None else "❌ "}' +
+                    f'{entry[ES.NAME] + ":" : <30}' +
+                    colored(str(getattr(self, entry[ES.NAME].lower())), attrs=['bold']) +
+                    '\n'
             )
 
         return values
@@ -363,10 +362,10 @@ class VEntry:
             service_string = f' (first entry: 0x{self.__base:02X} + 0x{self.service[1]:02X} = 0x{self.__base + self.service[1]:04X})'
 
         return (
-            f'{'✔️ ' if self.data else '❌ '}' +
-            f'{self.name + ':' : <30}' +
-            colored(f'{self.data or self.service}', attrs=['bold']) +
-            (service_string if self.data else '')
+                f'{"✔️ " if self.data else "❌ "}' +
+                f'{self.name + ":" : <30}' +
+                colored(f'{self.data or self.service}', attrs=['bold']) +
+                (service_string if self.data else '')
         )
 
     def __len__(self):
@@ -455,45 +454,45 @@ class LMUser:
 
     def __repr__(self):
         return (
-            f'👤 User ' +
-            colored(f'{self.v.username.data}\n\n', attrs=['bold']) +
-            colored(f'RID:', attrs=['bold']) +
-            f'\n🪪 {self.rid} (0x{self.rid:08X})' +
-            f'\n{self.v}\n' +
-            (
-                f'{self.reset_data}' if self.reset_data else ''
-            ) +
-            (
-                colored(f'\n❗ Password reset next logon\n', attrs=['bold']) if self.reset_force else ''
-            ) +
-            (
+                f'👤 User ' +
+                colored(f'{self.v.username.data}\n\n', attrs=['bold']) +
+                colored(f'RID:', attrs=['bold']) +
+                f'\n🪪 {self.rid} (0x{self.rid:08X})' +
+                f'\n{self.v}\n' +
                 (
-                    colored(f'\nPassword hint:', attrs=['bold']) +
-                    f'\n🧵 {self.hint}'
-                ) if self.hint else ''
-            ) +
-            colored('\nDeobfuscation keys:\n', attrs=['bold']) +
-            '\n'.join(
-                [
-                    f'❗ K{i + 1} = 0x{key.hex()}'
-                    for i, key in enumerate(self.k)
-                ]
-            ) +
-            (
+                    f'{self.reset_data}' if self.reset_data else ''
+                ) +
                 (
-                    colored('\n\n‼️🔓 Decrypted hashes:\n', attrs=['bold']) +
-                    f'NT: {self.decrypted_hashes[0].hex() if len(self.decrypted_hashes[0]) else '🚫 None'}\n' +
-                    f'LM: {self.decrypted_hashes[1].hex() if len(self.decrypted_hashes[1]) else '🚫 None (LM disabled/empty password)'}\n'
-                ) if self.decrypted_hashes else ''
-            ) +
-            (
+                    colored(f'\n❗ Password reset next logon\n', attrs=['bold']) if self.reset_force else ''
+                ) +
                 (
-                        colored('\n✔️ Encrypted hashes:\n', attrs=['bold']) +
-                        f'NT: {self.encrypted_hashes[0].hex() if len(self.encrypted_hashes[0]) else '🚫 None'}\n' +
-                        f'LM: {self.encrypted_hashes[1].hex() if len(self.encrypted_hashes[1]) else '🚫 None (LM disabled/empty password)'}\n'
-                ) if self.encrypted_hashes else ''
-            ) +
-            '\n'
+                    (
+                            colored(f'\nPassword hint:', attrs=['bold']) +
+                            f'\n🧵 {self.hint}'
+                    ) if self.hint else ''
+                ) +
+                colored('\nDeobfuscation keys:\n', attrs=['bold']) +
+                '\n'.join(
+                    [
+                        f'❗ K{i + 1} = 0x{key.hex()}'
+                        for i, key in enumerate(self.k)
+                    ]
+                ) +
+                (
+                    (
+                            colored('\n\n‼️🔓 Decrypted hashes:\n', attrs=['bold']) +
+                            f'NT: {self.decrypted_hashes[0].hex() if len(self.decrypted_hashes[0]) else "🚫 None"}\n' +
+                            f'LM: {self.decrypted_hashes[1].hex() if len(self.decrypted_hashes[1]) else "🚫 None (LM disabled/empty password)"}\n'
+                    ) if self.decrypted_hashes else ''
+                ) +
+                (
+                    (
+                            colored('\n✔️ Encrypted hashes:\n', attrs=['bold']) +
+                            f'NT: {self.encrypted_hashes[0].hex() if len(self.encrypted_hashes[0]) else "🚫 None"}\n' +
+                            f'LM: {self.encrypted_hashes[1].hex() if len(self.encrypted_hashes[1]) else "🚫 None (LM disabled/empty password)"}\n'
+                    ) if self.encrypted_hashes else ''
+                ) +
+                '\n'
         )
 
 
@@ -694,10 +693,10 @@ class LMDomain:
             print(
                 '\t' +
                 colored('B', color='light_green') + ' = ' +
-                colored('JD', color='light_red') + '[' + colored('c', color='cyan') +'] || ' +
-                colored('Skew1', color='light_blue') + '[' + colored('c', color='cyan') +'] || ' +
-                colored('GBG', color='yellow') + '[' + colored('c', color='cyan') +'] || ' +
-                colored('Data', color='magenta') + '[' + colored('c', color='cyan') +'],'
+                colored('JD', color='light_red') + '[' + colored('c', color='cyan') + '] || ' +
+                colored('Skew1', color='light_blue') + '[' + colored('c', color='cyan') + '] || ' +
+                colored('GBG', color='yellow') + '[' + colored('c', color='cyan') + '] || ' +
+                colored('Data', color='magenta') + '[' + colored('c', color='cyan') + '],'
             )
             print('where:')
             print(
@@ -711,7 +710,8 @@ class LMDomain:
             print('of the target system and literally PRINT the LSA key to PDF.\n')
             print('Hit Ctrl+P, select «Microsoft Print to PDF», and save the file.')
             print('Then, open the PDF, find the JD, Skew1, GBG, and Data class names, and enter them below.')
-            print('Each class name is a 4-byte hex value (8 characters), together composing a 16-byte Base16 encoded string.\n')
+            print(
+                'Each class name is a 4-byte hex value (8 characters), together composing a 16-byte Base16 encoded string.\n')
             print(colored('Example PDF entry:', attrs=['bold']))
             print('\tKey Name: HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\JD')
             print('\tClass Name: ' + colored('37557b3a', color='red', attrs=['bold']) + ' ← this is what you need ❗')
@@ -737,11 +737,12 @@ class LMDomain:
         lsa_key = unhexlify(lsa_key)
 
         for index, scrambled in enumerate(
-            [8, 5, 4, 2, 11, 9, 13, 3, 0, 6, 1, 12, 14, 10, 15, 7]
+                [8, 5, 4, 2, 11, 9, 13, 3, 0, 6, 1, 12, 14, 10, 15, 7]
         ):
             self.lsa_key[index] = lsa_key[scrambled]
 
-        print(f'{colored('LSA key:\n', attrs=['bold'])}🔑 0x{bytes(self.lsa_key).hex()}\n')
+        lsa_key_str = colored('LSA key:\n', attrs=['bold']) + f"🔑 0x{bytes(self.lsa_key).hex()}\n"
+        print(lsa_key_str)
 
         self.boot_key = self.decrypt_aes(
             bytes(self.lsa_key),
@@ -749,7 +750,8 @@ class LMDomain:
             bytes(self.fd.key.iv.data)
         )[:16]
 
-        print(f'{colored('Boot key:\n', attrs=['bold'])}🔐 0x{self.boot_key.hex()}\n')
+        lsa_key_str1=colored('Boot key:\n', attrs=['bold'])+f"🔐 0x{self.boot_key.hex()}\n"
+        print(lsa_key_str1)
 
     def decrypt_hash(self):
         for user in self.users:
